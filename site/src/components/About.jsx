@@ -16,7 +16,7 @@ export default function About() {
           <p className="eyebrow">Sobre</p>
           <h2>Cuidado técnico, resultado natural</h2>
           <p>
-            Sou Giovana Gusmão, esteticista e cosmetóloga formada em Biomedicina. Acredito que a
+            Sou Giovana Gusmão, esteticista e cosmetóloga formada em Estética e Cosmetica. Acredito que a
             verdadeira beleza está no equilíbrio entre técnica, ciência e respeito às
             características de cada pele.
           </p>

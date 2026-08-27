@@ -2,3 +2,5 @@ node_modules
 dist
 .DS_Store
 .env
+.baileys-auth
+whatsapp-qr.png

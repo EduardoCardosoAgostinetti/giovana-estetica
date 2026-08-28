@@ -9,6 +9,22 @@ export const HOURS_START = process.env.BUSINESS_HOURS_START || '09:00'
 export const HOURS_END = process.env.BUSINESS_HOURS_END || '19:00'
 const DEFAULT_DURATION_MINUTES = Number(process.env.DEFAULT_APPOINTMENT_DURATION_MINUTES) || 60
 
+const LUNCH_START = process.env.BUSINESS_LUNCH_START || null
+const LUNCH_END = process.env.BUSINESS_LUNCH_END || null
+
+function timeToMinutes(time) {
+  const [h, m] = time.split(':').map(Number)
+  return h * 60 + m
+}
+
+// Confere se um horário (com duração) invade a pausa de almoço configurada.
+function overlapsLunch(time, durationMinutes) {
+  if (!LUNCH_START || !LUNCH_END) return false
+  const start = timeToMinutes(time)
+  const end = start + durationMinutes
+  return start < timeToMinutes(LUNCH_END) && end > timeToMinutes(LUNCH_START)
+}
+
 // Dias da semana abertos, no padrão JS (0=domingo ... 6=sábado). Padrão: segunda a sábado.
 const OPEN_DAYS = (process.env.BUSINESS_OPEN_DAYS || '1,2,3,4,5,6')
   .split(',')
@@ -88,10 +104,18 @@ export async function checkAvailability({ date }) {
 
   const busy = response.data.calendars?.[CALENDAR_ID]?.busy ?? []
 
+  if (LUNCH_START && LUNCH_END) {
+    busy.push({
+      start: `${date}T${LUNCH_START}:00${offset}`,
+      end: `${date}T${LUNCH_END}:00${offset}`,
+    })
+  }
+
   return {
     configured: true,
     date,
     businessHours: { start: HOURS_START, end: HOURS_END },
+    lunchBreak: LUNCH_START && LUNCH_END ? { start: LUNCH_START, end: LUNCH_END } : null,
     busy: busy.map((b) => ({ start: b.start, end: b.end })),
   }
 }
@@ -111,6 +135,11 @@ export async function bookAppointment({ service, date, time, durationMinutes, cl
   }
 
   const duration = durationMinutes || DEFAULT_DURATION_MINUTES
+
+  if (overlapsLunch(time, duration)) {
+    return { success: false, error: `Esse horário invade a pausa de almoço (${LUNCH_START}–${LUNCH_END}) — não é possível agendar.` }
+  }
+
   const endTime = addMinutesToTime(time, duration)
 
   const event = await calendar.events.insert({

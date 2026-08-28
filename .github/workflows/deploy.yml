@@ -1,0 +1,23 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Atualizar codigo e reiniciar servicos
+        run: |
+          cd /var/www/clinica-giovana
+          git fetch origin main
+          git reset --hard origin/main
+
+          cd api && npm install --production
+
+          cd ../site && npm install && npm run build
+
+          export NVM_DIR="$HOME/.nvm"
+          . "$NVM_DIR/nvm.sh"
+          pm2 restart giovana-api giovana-site

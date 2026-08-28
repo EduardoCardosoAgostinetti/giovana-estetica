@@ -2,12 +2,16 @@ import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys'
 import qrcodeTerminal from 'qrcode-terminal'
 import qrcode from 'qrcode'
 import pino from 'pino'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { transcribeAudio, isConfigured as isTranscriptionConfigured } from './transcription.js'
+
+const logger = pino({ level: 'silent' })
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const AUTH_DIR = path.join(__dirname, '../../.baileys-auth')
@@ -61,7 +65,7 @@ export async function connect() {
   sock = makeWASocket({
     auth: state,
     version,
-    logger: pino({ level: 'silent' }),
+    logger,
   })
 
   sock.ev.on('creds.update', saveCreds)
@@ -105,8 +109,36 @@ export async function connect() {
         continue
       }
 
-      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || null
-      if (!text) continue // ignora imagem/áudio/figurinha etc. por enquanto
+      let text = msg.message.conversation || msg.message.extendedTextMessage?.text || null
+
+      if (!text && msg.message.audioMessage) {
+        const couldNotUnderstand = () =>
+          sendMessage(msg.key.remoteJid, 'Oii, não consegui entender o áudio que você mandou 😅 pode escrever ou mandar de novo?')
+            .catch((err) => console.error('[whatsapp] erro avisando falha de áudio:', err.message))
+
+        if (!isTranscriptionConfigured()) {
+          console.log(`[whatsapp] áudio recebido de ${msg.key.remoteJid}, mas transcrição não configurada (falta OPENAI_API_KEY)`)
+          await couldNotUnderstand()
+          continue
+        }
+        try {
+          const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage })
+          text = await transcribeAudio(buffer)
+          if (text) {
+            console.log(`[whatsapp] áudio de ${msg.key.remoteJid} transcrito: "${text}"`)
+          } else {
+            console.log(`[whatsapp] falha ao transcrever áudio de ${msg.key.remoteJid}`)
+            await couldNotUnderstand()
+            continue
+          }
+        } catch (err) {
+          console.error('[whatsapp] erro baixando/transcrevendo áudio:', err.message)
+          await couldNotUnderstand()
+          continue
+        }
+      }
+
+      if (!text) continue // ignora imagem/figurinha etc. por enquanto
 
       if (messageHandler) {
         try {

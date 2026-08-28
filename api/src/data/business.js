@@ -9,11 +9,12 @@ export const ADDRESS = process.env.BUSINESS_ADDRESS || 'Endereço não configura
 export const HOURS = process.env.BUSINESS_HOURS || 'Horário não configurado'
 
 const BASE_SERVICES = [
-  { id: 'facial', name: 'Facial', description: 'Limpeza de pele, hidratação e protocolos personalizados para cada tipo de pele.' },
-  { id: 'cilios', name: 'Extensão de Cílios', description: 'Técnicas fio a fio e volume para um olhar marcante e natural.' },
-  { id: 'corporal', name: 'Corporal', description: 'Tratamentos corporais que cuidam da pele e do bem-estar.' },
-  { id: 'lash-lifting', name: 'Lash Lifting', description: 'Curvatura e volume nos cílios naturais, com efeito duradouro.' },
-  { id: 'brow', name: 'Brow Lamination', description: 'Sobrancelhas alinhadas e volumosas, com aspecto natural.' },
+  { id: 'facial', name: 'Facial', description: 'Limpeza de pele, hidratação e protocolos personalizados para cada tipo de pele.', durationMinutes: 80 },
+  { id: 'cilios', name: 'Extensão de Cílios', description: 'Técnicas fio a fio e volume para um olhar marcante e natural.', durationMinutes: 80 },
+  { id: 'corporal', name: 'Corporal', description: 'Massagem e tratamentos corporais que cuidam da pele e do bem-estar.', durationMinutes: 80 },
+  { id: 'lash-lifting', name: 'Lash Lifting', description: 'Curvatura e volume nos cílios naturais, com efeito duradouro.', durationMinutes: 80 },
+  { id: 'brow', name: 'Brow Lamination', description: 'Sobrancelhas alinhadas e volumosas, com aspecto natural.', durationMinutes: 80 },
+  { id: 'sobrancelha', name: 'Design de Sobrancelha', description: 'Design e alinhamento da sobrancelha.', durationMinutes: 30 },
 ]
 
 function priceEnvVar(id) {

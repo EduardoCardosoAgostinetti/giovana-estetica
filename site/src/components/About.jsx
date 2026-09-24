@@ -1,6 +1,6 @@
 import Reveal from './Reveal.jsx'
 import { ABOUT_POINTS } from '../data.js'
-import giovanaPhoto from '../assets/giovana.jpg'
+import giovanaPhoto from '../assets/giovana.webp'
 
 export default function About() {
   return (

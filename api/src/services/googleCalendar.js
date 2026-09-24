@@ -149,6 +149,9 @@ export async function bookAppointment({ service, date, time, durationMinutes, cl
       description: `Agendado via robô de WhatsApp.\nCliente: ${clientName}\nTelefone: ${clientPhone}\nServiço: ${service}`,
       start: { dateTime: `${date}T${time}:00`, timeZone: TIMEZONE },
       end: { dateTime: `${date}T${endTime}:00`, timeZone: TIMEZONE },
+      extendedProperties: {
+        private: { clientPhone, clientName, service, reminded: 'false' },
+      },
     },
   })
 
@@ -160,4 +163,128 @@ export async function bookAppointment({ service, date, time, durationMinutes, cl
     time,
     endTime,
   }
+}
+
+/**
+ * Busca os próximos agendamentos futuros dessa cliente (pelo telefone). Usado quando
+ * ela quer remarcar ou desmarcar, pra IA saber qual agendamento mexer sem perguntar o eventId.
+ */
+export async function findUpcomingAppointments({ clientPhone }) {
+  const calendar = getCalendar()
+  if (!calendar) {
+    return { configured: false, message: 'A integração com a agenda ainda não foi configurada.' }
+  }
+
+  const response = await calendar.events.list({
+    calendarId: CALENDAR_ID,
+    timeMin: new Date().toISOString(),
+    privateExtendedProperty: [`clientPhone=${clientPhone}`],
+    singleEvents: true,
+    orderBy: 'startTime',
+  })
+
+  const appointments = (response.data.items ?? []).map((e) => ({
+    eventId: e.id,
+    service: e.extendedProperties?.private?.service ?? e.summary,
+    date: e.start?.dateTime?.slice(0, 10),
+    time: e.start?.dateTime?.slice(11, 16),
+  }))
+
+  return { configured: true, appointments }
+}
+
+/**
+ * Move um agendamento existente pra outra data/horário. Sempre tentar isso primeiro
+ * quando a cliente quiser desmarcar, antes de cancelar de vez.
+ */
+export async function rescheduleAppointment({ eventId, date, time, durationMinutes }) {
+  const calendar = getCalendar()
+  if (!calendar) {
+    return { success: false, error: 'A integração com a agenda ainda não foi configurada.' }
+  }
+
+  if (!isOpenOnDate(date)) {
+    return { success: false, error: 'Fechado nesse dia da semana — não é possível remarcar pra essa data.' }
+  }
+
+  const duration = durationMinutes || DEFAULT_DURATION_MINUTES
+
+  if (overlapsLunch(time, duration)) {
+    return { success: false, error: `Esse horário invade a pausa de almoço (${LUNCH_START}–${LUNCH_END}) — não é possível remarcar pra esse horário.` }
+  }
+
+  const endTime = addMinutesToTime(time, duration)
+
+  const existing = await calendar.events.get({ calendarId: CALENDAR_ID, eventId })
+  const privateProps = { ...existing.data.extendedProperties?.private, reminded: 'false' }
+
+  const event = await calendar.events.patch({
+    calendarId: CALENDAR_ID,
+    eventId,
+    requestBody: {
+      start: { dateTime: `${date}T${time}:00`, timeZone: TIMEZONE },
+      end: { dateTime: `${date}T${endTime}:00`, timeZone: TIMEZONE },
+      extendedProperties: { private: privateProps },
+    },
+  })
+
+  return { success: true, eventId: event.data.id, date, time, endTime }
+}
+
+/**
+ * Cancela um agendamento de vez. Só deve ser chamado depois que a IA ofereceu remarcar
+ * pra outro dia/horário e a cliente confirmou que não quer mais nenhum horário.
+ */
+export async function cancelAppointment({ eventId }) {
+  const calendar = getCalendar()
+  if (!calendar) {
+    return { success: false, error: 'A integração com a agenda ainda não foi configurada.' }
+  }
+
+  await calendar.events.delete({ calendarId: CALENDAR_ID, eventId })
+  return { success: true }
+}
+
+/**
+ * Busca agendamentos que começam daqui a ~2h e ainda não receberam lembrete —
+ * usado pelo job de lembrete automático.
+ */
+export async function findAppointmentsNeedingReminder() {
+  const calendar = getCalendar()
+  if (!calendar) return []
+
+  const now = Date.now()
+  const windowStart = new Date(now + 115 * 60 * 1000).toISOString()
+  const windowEnd = new Date(now + 125 * 60 * 1000).toISOString()
+
+  const response = await calendar.events.list({
+    calendarId: CALENDAR_ID,
+    timeMin: windowStart,
+    timeMax: windowEnd,
+    privateExtendedProperty: ['reminded=false'],
+    singleEvents: true,
+    orderBy: 'startTime',
+  })
+
+  return (response.data.items ?? []).map((e) => ({
+    eventId: e.id,
+    clientPhone: e.extendedProperties?.private?.clientPhone,
+    clientName: e.extendedProperties?.private?.clientName,
+    service: e.extendedProperties?.private?.service ?? e.summary,
+    date: e.start?.dateTime?.slice(0, 10),
+    time: e.start?.dateTime?.slice(11, 16),
+  }))
+}
+
+/** Marca um agendamento como já lembrado, pra não mandar o lembrete duas vezes. */
+export async function markReminded(eventId) {
+  const calendar = getCalendar()
+  if (!calendar) return
+  const existing = await calendar.events.get({ calendarId: CALENDAR_ID, eventId })
+  const privateProps = { ...existing.data.extendedProperties?.private, reminded: 'true' }
+  await calendar.events.patch({
+    calendarId: CALENDAR_ID,
+    eventId,
+    requestBody: { extendedProperties: { private: privateProps } },
+  })
 }

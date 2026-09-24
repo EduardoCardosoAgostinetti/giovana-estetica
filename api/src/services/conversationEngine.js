@@ -1,7 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { BUSINESS_NAME, WHATSAPP_LINK, SERVICES, ADDRESS, HOURS } from '../data/business.js'
-import { checkAvailability, bookAppointment, isConfigured as isCalendarConfigured } from './googleCalendar.js'
+import {
+  checkAvailability,
+  bookAppointment,
+  findUpcomingAppointments,
+  rescheduleAppointment,
+  cancelAppointment,
+  isConfigured as isCalendarConfigured,
+} from './googleCalendar.js'
 import { getHistory, appendTurn } from './conversationStore.js'
 
 const MODEL = process.env.AI_MODEL || 'claude-haiku-4-5'
@@ -13,6 +20,12 @@ function getClient() {
   if (!process.env.ANTHROPIC_API_KEY) return null
   if (!client) client = new Anthropic()
   return client
+}
+
+function findServiceDuration(service) {
+  const matched = SERVICES.find((s) => s.name.toLowerCase() === service.toLowerCase())
+    || SERVICES.find((s) => service.toLowerCase().includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(service.toLowerCase()))
+  return matched?.durationMinutes
 }
 
 function buildTools(clientPhone) {
@@ -48,10 +61,54 @@ function buildTools(clientPhone) {
         required: ['service', 'date', 'time', 'clientName'],
       },
       run: async ({ service, date, time, clientName }) => {
-        const matched = SERVICES.find((s) => s.name.toLowerCase() === service.toLowerCase())
-          || SERVICES.find((s) => service.toLowerCase().includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(service.toLowerCase()))
-        const durationMinutes = matched?.durationMinutes
+        const durationMinutes = findServiceDuration(service)
         const result = await bookAppointment({ service, date, time, durationMinutes, clientName, clientPhone })
+        return JSON.stringify(result)
+      },
+    }),
+    betaTool({
+      name: 'find_my_appointments',
+      description:
+        'Busca os agendamentos futuros dessa cliente (pelo telefone da conversa). Use isso sempre que ela quiser remarcar ou desmarcar, antes de mexer em qualquer coisa — não pergunte o eventId pra ela, é interno.',
+      inputSchema: { type: 'object', properties: {} },
+      run: async () => {
+        const result = await findUpcomingAppointments({ clientPhone })
+        return JSON.stringify(result)
+      },
+    }),
+    betaTool({
+      name: 'reschedule_appointment',
+      description:
+        'Move um agendamento existente pra outro dia/horário. Use check_availability antes pra confirmar que o novo horário está livre. Sempre ofereça remarcar primeiro quando a cliente quiser desmarcar — só chame cancel_appointment se ela não quiser nenhum outro horário.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'string', description: 'ID do agendamento, vindo de find_my_appointments' },
+          service: { type: 'string', description: 'Nome do serviço desse agendamento, vindo de find_my_appointments (usado pra calcular a duração certa)' },
+          date: { type: 'string', description: 'Nova data no formato YYYY-MM-DD' },
+          time: { type: 'string', description: 'Novo horário no formato HH:mm' },
+        },
+        required: ['eventId', 'service', 'date', 'time'],
+      },
+      run: async ({ eventId, service, date, time }) => {
+        const durationMinutes = findServiceDuration(service)
+        const result = await rescheduleAppointment({ eventId, date, time, durationMinutes })
+        return JSON.stringify(result)
+      },
+    }),
+    betaTool({
+      name: 'cancel_appointment',
+      description:
+        'Cancela um agendamento de vez, sem remarcar. Só use depois de ter oferecido remarcar pra outro dia/horário (via reschedule_appointment) e a cliente confirmar que não quer nenhum outro horário.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'string', description: 'ID do agendamento, vindo de find_my_appointments' },
+        },
+        required: ['eventId'],
+      },
+      run: async ({ eventId }) => {
+        const result = await cancelAppointment({ eventId })
         return JSON.stringify(result)
       },
     }),
@@ -100,6 +157,13 @@ Seu objetivo é conversar naturalmente, entender o que a cliente precisa e condu
 3. Confira a disponibilidade real na agenda antes de confirmar qualquer horário.
 4. Se o horário estiver livre, finalize o agendamento (use o nome que você já tem — não peça de novo se já souber).
 5. Se estiver ocupado, sugira os horários livres mais próximos dentro do horário de funcionamento.
+
+Se a cliente quiser desmarcar ou remarcar um agendamento existente:
+1. Use find_my_appointments pra descobrir qual agendamento é (nunca peça o eventId pra ela).
+2. SEMPRE ofereça remarcar pra outro dia/horário primeiro — confira disponibilidade com check_availability e use reschedule_appointment.
+3. Só cancele de vez com cancel_appointment se a cliente disser claramente que não quer remarcar, que não vai poder ir de jeito nenhum, ou algo do tipo.
+
+A Giovana não cobra sinal/depósito pra confirmar agendamento — nunca mencione isso.
 
 Responda sempre em português, curto e natural, do jeito que a Giovana escreve de verdade — nunca com cara de robô ou atendimento automatizado. Nunca invente disponibilidade — sempre confira antes de confirmar.`
 }

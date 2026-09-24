@@ -3,6 +3,7 @@ import app from './app.js'
 import { connect, sendMessage, onMessage } from './services/whatsappBaileys.js'
 import { enqueueMessage } from './services/messageDebouncer.js'
 import { handleMessage } from './services/conversationEngine.js'
+import { startReminderLoop } from './services/reminderScheduler.js'
 
 const PORT = process.env.PORT || 3001
 
@@ -27,4 +28,5 @@ if (process.env.WHATSAPP_ENABLED === 'true') {
   })
 
   connect().catch((err) => console.error('[whatsapp] erro ao conectar:', err.message))
+  startReminderLoop(sendMessage)
 }

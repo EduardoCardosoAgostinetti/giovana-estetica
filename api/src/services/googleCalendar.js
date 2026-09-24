@@ -166,6 +166,33 @@ export async function bookAppointment({ service, date, time, durationMinutes, cl
 }
 
 /**
+ * Lista os agendamentos dos próximos N dias, pra tela de admin do site
+ * (agenda + status do lembrete de cada cliente).
+ */
+export async function listAppointments({ daysAhead = 14 } = {}) {
+  const calendar = getCalendar()
+  if (!calendar) return []
+
+  const response = await calendar.events.list({
+    calendarId: CALENDAR_ID,
+    timeMin: new Date().toISOString(),
+    timeMax: new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+  })
+
+  return (response.data.items ?? []).map((e) => ({
+    eventId: e.id,
+    date: e.start?.dateTime?.slice(0, 10),
+    time: e.start?.dateTime?.slice(11, 16),
+    endTime: e.end?.dateTime?.slice(11, 16),
+    service: e.extendedProperties?.private?.service ?? e.summary,
+    clientName: e.extendedProperties?.private?.clientName ?? null,
+    reminded: e.extendedProperties?.private?.reminded === 'true',
+  }))
+}
+
+/**
  * Busca os próximos agendamentos futuros dessa cliente (pelo telefone). Usado quando
  * ela quer remarcar ou desmarcar, pra IA saber qual agendamento mexer sem perguntar o eventId.
  */

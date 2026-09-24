@@ -1,6 +1,8 @@
 import express from 'express'
 import cors from 'cors'
+import crypto from 'crypto'
 import { handleMessage } from './services/conversationEngine.js'
+import { listAppointments } from './services/googleCalendar.js'
 import { WHATSAPP_LINK } from './data/business.js'
 
 const app = express()
@@ -10,6 +12,30 @@ app.use(express.json())
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' })
+})
+
+function requireAdminPassword(req, res, next) {
+  const expected = process.env.ADMIN_PASSWORD
+  if (!expected) {
+    return res.status(503).json({ error: 'admin_nao_configurado' })
+  }
+
+  const provided = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  const match = a.length === b.length && crypto.timingSafeEqual(a, b)
+
+  if (!match) {
+    return res.status(401).json({ error: 'senha_incorreta' })
+  }
+
+  next()
+}
+
+app.get('/api/admin/appointments', requireAdminPassword, async (req, res) => {
+  const daysAhead = Number(req.query.days) || 14
+  const appointments = await listAppointments({ daysAhead })
+  res.json({ appointments })
 })
 
 app.post('/api/message', async (req, res) => {

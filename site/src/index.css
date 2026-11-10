@@ -252,6 +252,8 @@ em{ font-style: italic; color: var(--rose-dark); }
   aspect-ratio: 1/1; border-radius: 14px;
   background: linear-gradient(135deg, var(--rose-light), var(--cream-2));
 }
+.gallery-item{ overflow:hidden; }
+.gallery-item img{ width:100%; height:100%; object-fit:cover; display:block; }
 .gallery-item.alt{ background: linear-gradient(135deg, var(--cream-2), var(--rose)); }
 .gallery-item--cta{
   background: var(--brown); color: var(--cream);

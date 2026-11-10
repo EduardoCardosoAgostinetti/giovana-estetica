@@ -2,7 +2,11 @@ import { InstagramIcon } from './icons.jsx'
 import Reveal from './Reveal.jsx'
 import { INSTAGRAM_LINK, INSTAGRAM_HANDLE } from '../data.js'
 
-const TILES = Array.from({ length: 7 }, (_, i) => (i % 2 === 0 ? '' : 'alt'))
+const IMAGES = Object.entries(
+  import.meta.glob('../assets/gallery/*.{png,jpg,jpeg,webp}', { eager: true, import: 'default' })
+)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, url]) => url)
 
 export default function Gallery() {
   return (
@@ -20,8 +24,10 @@ export default function Gallery() {
           </p>
         </Reveal>
         <div className="gallery-grid">
-          {TILES.map((variant, i) => (
-            <Reveal as="div" key={i} className={`gallery-item ${variant}`.trim()} />
+          {IMAGES.map((src, i) => (
+            <Reveal as="div" key={src} className="gallery-item">
+              <img src={src} alt={`Trabalho de estética ${i + 1}`} loading="lazy" />
+            </Reveal>
           ))}
           <Reveal
             as="a"
